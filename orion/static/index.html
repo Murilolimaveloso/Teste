@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ORION</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <canvas id="cena"></canvas>
+
+  <header class="topo">
+    <h1>O R I O N</h1>
+    <div id="status">toque no microfone ou digite</div>
+  </header>
+
+  <div class="canto-esq">
+    <button id="btnContinuo" class="pilula" title="Escuta contínua: diga 'Orion' antes do pedido">Escuta contínua: off</button>
+  </div>
+  <nav class="canto-dir">
+    <button class="pilula" data-abrir="agenda">Agenda</button>
+    <button class="pilula" data-abrir="globo">Globo</button>
+    <button class="pilula" data-abrir="relogio">Relógio</button>
+    <button class="pilula" id="btnReiniciar" title="Apaga o histórico desta conversa">Nova conversa</button>
+  </nav>
+
+  <!-- Transcrição -->
+  <div id="conversa"></div>
+
+  <!-- Entrada -->
+  <form id="entrada" autocomplete="off">
+    <button type="button" id="btnMic" class="mic" aria-label="Falar">
+      <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2Z"/></svg>
+    </button>
+    <input id="texto" placeholder="Peça qualquer coisa ao Orion…">
+    <button type="submit" class="enviar">Enviar</button>
+  </form>
+
+  <!-- Painel: Agenda -->
+  <section class="painel" id="painel-agenda" hidden>
+    <div class="painel-topo">
+      <div><h2>Lembretes &amp; Calendário</h2><small>Agenda interna, tarefas e listas</small></div>
+      <div><button class="ic" id="agendaAtualizar" title="Atualizar">⟳</button><button class="ic fechar" title="Fechar">✕</button></div>
+    </div>
+    <div class="abas">
+      <button class="aba ativa" data-aba="cal">Calendário &amp; Lembretes</button>
+      <button class="aba" data-aba="tar">Tarefas</button>
+      <button class="aba" data-aba="lis">Minhas Listas</button>
+    </div>
+    <div class="aba-conteudo" id="aba-cal">
+      <div class="cal">
+        <div class="cal-topo">
+          <button class="ic" id="mesAnt">‹</button>
+          <strong id="mesNome"></strong>
+          <div><button class="mini" id="mesHoje">Hoje</button><button class="ic" id="mesProx">›</button></div>
+        </div>
+        <div class="cal-grade" id="calGrade"></div>
+      </div>
+      <form class="form-lembrete" id="formLembrete">
+        <input name="texto" placeholder="O que lembrar? (ex.: Reunião com equipe)" required>
+        <input name="tema" placeholder="Tema (ex.: Trabalho)">
+        <input name="data" type="date" required>
+        <input name="hora" type="time">
+        <button class="mini forte">+ Agendar</button>
+      </form>
+      <ul class="lista" id="listaLembretes"></ul>
+    </div>
+    <div class="aba-conteudo" id="aba-tar" hidden>
+      <form class="linha" id="formTarefa"><input name="texto" placeholder="Nova tarefa" required><button class="mini forte">+ Adicionar</button></form>
+      <ul class="lista" id="listaTarefas"></ul>
+    </div>
+    <div class="aba-conteudo" id="aba-lis" hidden>
+      <form class="linha" id="formLista"><input name="lista" placeholder="Lista (ex.: compras)" required><input name="item" placeholder="Item" required><button class="mini forte">+</button></form>
+      <div id="listas"></div>
+    </div>
+  </section>
+
+  <!-- Painel: Globo -->
+  <section class="painel largo" id="painel-globo" hidden>
+    <div class="painel-topo">
+      <div><h2>Globo 3D · <span id="globoLocal">Terra</span></h2><small id="globoCoord"></small></div>
+      <div class="barra">
+        <button class="mini" id="gSat">Satélite aqui</button>
+        <button class="mini" id="gZoom">+ Zoom</button>
+        <button class="mini" id="gAfastar">− Afastar</button>
+        <button class="mini" id="gNoite">Noite</button>
+        <button class="mini" id="gNova">Nova janela</button>
+        <button class="ic fechar" title="Fechar">✕</button>
+      </div>
+    </div>
+    <div class="globo-area">
+      <canvas id="globoCanvas"></canvas>
+      <iframe id="mapaSat" hidden title="Mapa de satélite"></iframe>
+    </div>
+    <small class="dica">Arraste para girar · role para zoom · peça "me mostre Paris" ao Orion</small>
+  </section>
+
+  <!-- Painel: Relógio -->
+  <section class="relogio" id="painel-relogio" hidden>
+    <div class="rel-topo"><span>● Projeção temporal</span><span class="tag" id="fuso"></span></div>
+    <div class="rel-hora"><span id="relHM">--:--</span><span id="relS">:--</span></div>
+    <div class="rel-data" id="relData"></div>
+    <small>horário local</small>
+    <button class="ic fechar" title="Fechar">✕</button>
+  </section>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/static/avatar.js"></script>
+  <script src="/static/globo.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
