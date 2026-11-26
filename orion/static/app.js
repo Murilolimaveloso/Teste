@@ -128,11 +128,12 @@
   };
 
   // ------------------------------------------------------------ painéis
-  const paineis = { agenda: $('#painel-agenda'), globo: $('#painel-globo'), relogio: $('#painel-relogio') };
+  const paineis = { agenda: $('#painel-agenda'), globo: $('#painel-globo'), relogio: $('#painel-relogio'), memoria: $('#painel-memoria') };
   function abrir(nome) {
     Object.entries(paineis).forEach(([k, el]) => { el.hidden = k !== nome; });
     if (nome === 'globo') Globo.abrir(); else Globo.parar();
     if (nome === 'agenda') carregarDados();
+    if (nome === 'memoria') carregarMemoria();
   }
   function fecharTudo() { Object.values(paineis).forEach(el => { el.hidden = true; }); Globo.parar(); }
   document.querySelectorAll('[data-abrir]').forEach(b => { b.onclick = () => (paineis[b.dataset.abrir].hidden ? abrir(b.dataset.abrir) : fecharTudo()); });
@@ -144,6 +145,7 @@
       case 'mostrar_globo': abrir('globo'); Globo.irPara(a.local, a.lat, a.lon, a.satelite); break;
       case 'mostrar_calendario': abrir('agenda'); break;
       case 'mostrar_relogio': abrir('relogio'); break;
+      case 'mostrar_memoria': abrir('memoria'); break;
       case 'fechar_paineis': fecharTudo(); break;
     }
   }
@@ -256,6 +258,46 @@
     const f = e.target;
     await fetch('/api/listas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lista: f.lista.value, item: f.item.value }) });
     f.item.value = ''; carregarDados();
+  };
+
+  // ------------------------------------------------------------ memória
+  const NOMES_TIPO = { fato: 'fato', preferencia: 'preferência', habilidade: 'habilidade', licao: 'lição', rotina: 'rotina' };
+  let memoria = { memorias: [], habitos: [] }, filtroTipo = '';
+  async function carregarMemoria() {
+    try { memoria = await (await fetch('/api/memoria')).json(); } catch (_) { return; }
+    const e = memoria.estatisticas || {};
+    $('#memStats').textContent = `${e.memorias || 0} memórias · ${e.conversas || 0} conversas · ${e.acoes || 0} ações (${e.falhas || 0} falhas) · guardado no Neon`;
+    desenharMemorias();
+    const ul = $('#listaHabitos'); ul.innerHTML = '';
+    if (!memoria.habitos.length) vazio(ul, 'Ainda observando seu uso…');
+    memoria.habitos.forEach(h => ul.appendChild(li(h.alvo || h.ferramenta, `${h.vezes}x · por volta das ${h.hora_comum}h`)));
+  }
+  function desenharMemorias() {
+    const ul = $('#listaMemorias'); ul.innerHTML = '';
+    const itens = memoria.memorias.filter(m => !filtroTipo || m.tipo === filtroTipo);
+    if (!itens.length) return vazio(ul, 'Nada aprendido aqui ainda. Converse com o Orion!');
+    itens.forEach(m => {
+      const tag = document.createElement('span'); tag.className = 'tipo'; tag.textContent = NOMES_TIPO[m.tipo] || m.tipo;
+      const e = li(m.conteudo, `${'★'.repeat(m.importancia)} · usada ${m.usos}x`, [
+        botao('✕', 'Esquecer', async () => { await fetch('/api/memoria/' + m.id, { method: 'DELETE' }); carregarMemoria(); }),
+      ]);
+      e.prepend(tag); ul.appendChild(e);
+    });
+  }
+  document.querySelectorAll('#memFiltros .mini').forEach(b => {
+    b.onclick = () => {
+      filtroTipo = b.dataset.tipo;
+      document.querySelectorAll('#memFiltros .mini').forEach(x => x.classList.toggle('ativo', x === b));
+      desenharMemorias();
+    };
+  });
+  $('#memAtualizar').onclick = carregarMemoria;
+  $('#memRefletir').onclick = async e => {
+    e.target.textContent = 'Aprendendo…';
+    try {
+      const r = await (await fetch('/api/memoria/refletir', { method: 'POST' })).json();
+      bolha('ia', '🧠 Reflexão: ' + (r.msg || r.detail));
+    } finally { e.target.textContent = 'Aprender agora'; carregarMemoria(); }
   };
 
   // ------------------------------------------------------------ avisos de lembretes

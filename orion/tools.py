@@ -13,50 +13,14 @@ import os
 import platform
 import shutil
 import subprocess
-import threading
 import urllib.parse
-import uuid
 import webbrowser
-from datetime import datetime
 from pathlib import Path
 
-DATA_DIR = Path(__file__).parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
-DB_FILE = DATA_DIR / "memoria.json"
-_lock = threading.Lock()
+import db
 
 SYSTEM = platform.system()  # "Windows", "Darwin" ou "Linux"
 ALLOW_SHELL = os.getenv("ORION_PERMITIR_COMANDOS", "0") == "1"
-
-# --------------------------------------------------------------------------
-# Banco de dados simples em JSON (lembretes, tarefas, listas, notas)
-# --------------------------------------------------------------------------
-
-def _load() -> dict:
-    if DB_FILE.exists():
-        try:
-            return json.loads(DB_FILE.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            pass
-    return {"lembretes": [], "tarefas": [], "listas": {}, "notas": []}
-
-
-def _save(db: dict) -> None:
-    DB_FILE.write_text(json.dumps(db, ensure_ascii=False, indent=2), encoding="utf-8")
-
-
-def db_read() -> dict:
-    with _lock:
-        return _load()
-
-
-def db_update(fn):
-    with _lock:
-        db = _load()
-        result = fn(db)
-        _save(db)
-        return result
-
 
 # --------------------------------------------------------------------------
 # Aplicativos conhecidos (nome falado -> comando por sistema)
@@ -214,64 +178,60 @@ def system_info() -> str:
     return json.dumps(info, ensure_ascii=False)
 
 
-# ---- Agenda / tarefas / listas / notas -----------------------------------
+# ---- Agenda / tarefas / listas (no Neon) ---------------------------------
 
 def add_reminder(texto: str, data: str, hora: str = "", tema: str = "") -> str:
-    item = {"id": uuid.uuid4().hex[:8], "texto": texto, "data": data, "hora": hora,
-            "tema": tema, "avisado": False}
-    db_update(lambda db: db["lembretes"].append(item))
+    db.add_lembrete(texto, data, hora, tema)
     return f"Lembrete criado: {texto} em {data} {hora}".strip()
 
 
 def list_reminders(data: str = "") -> str:
-    items = db_read()["lembretes"]
-    if data:
-        items = [i for i in items if i["data"] == data]
+    items = db.lembretes(data)
     return json.dumps(items, ensure_ascii=False) if items else "Nenhum lembrete."
 
 
 def delete_reminder(id: str) -> str:
-    def fn(db):
-        before = len(db["lembretes"])
-        db["lembretes"] = [i for i in db["lembretes"] if i["id"] != id]
-        return before != len(db["lembretes"])
-    return "Lembrete removido." if db_update(fn) else "Não encontrei esse lembrete."
+    return "Lembrete removido." if db.apagar_lembrete(id) else "Não encontrei esse lembrete."
 
 
 def add_task(texto: str) -> str:
-    item = {"id": uuid.uuid4().hex[:8], "texto": texto, "feita": False}
-    db_update(lambda db: db["tarefas"].append(item))
+    db.add_tarefa(texto)
     return f"Tarefa adicionada: {texto}"
 
 
 def complete_task(id: str) -> str:
-    def fn(db):
-        for t in db["tarefas"]:
-            if t["id"] == id:
-                t["feita"] = True
-                return True
-        return False
-    return "Tarefa concluída." if db_update(fn) else "Não encontrei essa tarefa."
+    return "Tarefa concluída." if db.concluir_tarefa(id) else "Não encontrei essa tarefa."
 
 
 def list_tasks() -> str:
-    items = db_read()["tarefas"]
+    items = db.tarefas()
     return json.dumps(items, ensure_ascii=False) if items else "Nenhuma tarefa."
 
 
 def add_to_list(lista: str, itens: list[str]) -> str:
-    db_update(lambda db: db["listas"].setdefault(lista.lower(), []).extend(itens))
+    db.add_itens(lista, itens)
     return f"Adicionei {len(itens)} item(ns) à lista '{lista}'."
 
 
 def get_lists() -> str:
-    return json.dumps(db_read()["listas"], ensure_ascii=False) or "Nenhuma lista."
+    return json.dumps(db.listas(), ensure_ascii=False) or "Nenhuma lista."
 
 
-def save_note(texto: str) -> str:
-    item = {"quando": datetime.now().isoformat(timespec="minutes"), "texto": texto}
-    db_update(lambda db: db["notas"].append(item))
-    return "Anotado. Vou lembrar disso."
+# ---- Memória e aprendizado -------------------------------------------------
+
+def search_memory(consulta: str) -> str:
+    rows = db.buscar(consulta, limite=10)
+    if not rows:
+        return "Não encontrei nada sobre isso na memória."
+    return "\n".join(f"#{r['id']} [{r['tipo']}] {r['conteudo']}" for r in rows)
+
+
+def show_habits() -> str:
+    rows = db.habitos(15)
+    if not rows:
+        return "Ainda não tenho dados suficientes sobre seus hábitos."
+    return "\n".join(f"{r['alvo']} ({r['ferramenta']}): {r['vezes']}x, geralmente às {r['hora_comum']}h"
+                     for r in rows)
 
 
 # --------------------------------------------------------------------------
@@ -318,8 +278,21 @@ TOOLS = [
     _tool("adicionar_na_lista", "Adiciona itens a uma lista nomeada (compras, filmes, etc.).",
           {"lista": S, "itens": {"type": "array", "items": S}}, ["lista", "itens"]),
     _tool("ver_listas", "Mostra todas as listas e seus itens."),
-    _tool("memorizar", "Guarda uma informação sobre o usuário para lembrar em conversas futuras.",
-          {"texto": S}, ["texto"]),
+    _tool("aprender",
+          "Guarda um aprendizado na memória permanente (banco Neon). Use sempre que descobrir algo útil: "
+          "fato (sobre o usuário/vida dele), preferencia (gostos, jeito de fazer), habilidade (um procedimento "
+          "ou comando que FUNCIONOU para resolver um pedido, com o passo a passo exato), licao (algo que deu "
+          "errado e como evitar) ou rotina (o que ele faz em certos horários/dias). Memórias parecidas são "
+          "mescladas automaticamente. importancia de 1 a 5.",
+          {"tipo": {"type": "string", "enum": ["fato", "preferencia", "habilidade", "licao", "rotina"]},
+           "conteudo": S, "tags": {"type": "string", "description": "palavras-chave separadas por espaço"},
+           "importancia": {"type": "integer"}},
+          ["tipo", "conteudo"]),
+    _tool("buscar_memoria", "Procura na memória permanente tudo o que você já aprendeu sobre um assunto.",
+          {"consulta": S}, ["consulta"]),
+    _tool("esquecer", "Apaga uma memória pelo id (#número) quando estiver errada ou o usuário pedir.",
+          {"id": {"type": "integer"}}, ["id"]),
+    _tool("ver_habitos", "Mostra os hábitos de uso detectados (o que o usuário mais pede e em que horário)."),
     # --- ferramentas de interface (mostram algo na tela do ORION) ---
     _tool("mostrar_globo",
           "Mostra o globo 3D na interface do ORION e gira até um local. Informe latitude e longitude "
@@ -329,10 +302,11 @@ TOOLS = [
           ["local", "lat", "lon"]),
     _tool("mostrar_calendario", "Abre o painel de calendário, tarefas e listas na interface."),
     _tool("mostrar_relogio", "Mostra o relógio holográfico com data e hora na interface."),
+    _tool("mostrar_memoria", "Abre o painel que mostra tudo o que você aprendeu sobre o usuário e os hábitos dele."),
     _tool("fechar_paineis", "Fecha os painéis abertos e volta ao avatar."),
 ]
 
-UI_TOOLS = {"mostrar_globo", "mostrar_calendario", "mostrar_relogio", "fechar_paineis"}
+UI_TOOLS = {"mostrar_globo", "mostrar_calendario", "mostrar_relogio", "mostrar_memoria", "fechar_paineis"}
 
 HANDLERS = {
     "abrir_aplicativo": lambda a: open_app(a["nome"]),
@@ -350,7 +324,11 @@ HANDLERS = {
     "listar_tarefas": lambda a: list_tasks(),
     "adicionar_na_lista": lambda a: add_to_list(a["lista"], a["itens"]),
     "ver_listas": lambda a: get_lists(),
-    "memorizar": lambda a: save_note(a["texto"]),
+    "aprender": lambda a: db.aprender(a["conteudo"], a.get("tipo", "fato"), a.get("tags", ""),
+                                      a.get("importancia", 3)),
+    "buscar_memoria": lambda a: search_memory(a["consulta"]),
+    "esquecer": lambda a: db.esquecer(a["id"]),
+    "ver_habitos": lambda a: show_habits(),
 }
 
 

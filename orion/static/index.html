@@ -23,6 +23,7 @@
     <button class="pilula" data-abrir="agenda">Agenda</button>
     <button class="pilula" data-abrir="globo">Globo</button>
     <button class="pilula" data-abrir="relogio">Relógio</button>
+    <button class="pilula" data-abrir="memoria">Memória</button>
     <button class="pilula" id="btnReiniciar" title="Apaga o histórico desta conversa">Nova conversa</button>
   </nav>
 
@@ -95,6 +96,25 @@
       <iframe id="mapaSat" hidden title="Mapa de satélite"></iframe>
     </div>
     <small class="dica">Arraste para girar · role para zoom · peça "me mostre Paris" ao Orion</small>
+  </section>
+
+  <!-- Painel: Memória -->
+  <section class="painel" id="painel-memoria" hidden>
+    <div class="painel-topo">
+      <div><h2>Memória &amp; Aprendizado</h2><small id="memStats">guardado no Neon</small></div>
+      <div><button class="mini" id="memRefletir" title="Faz o Orion reler a conversa atual e aprender agora">Aprender agora</button><button class="ic" id="memAtualizar" title="Atualizar">⟳</button><button class="ic fechar" title="Fechar">✕</button></div>
+    </div>
+    <div class="filtros" id="memFiltros">
+      <button class="mini ativo" data-tipo="">Tudo</button>
+      <button class="mini" data-tipo="fato">Fatos</button>
+      <button class="mini" data-tipo="preferencia">Preferências</button>
+      <button class="mini" data-tipo="habilidade">Habilidades</button>
+      <button class="mini" data-tipo="licao">Lições</button>
+      <button class="mini" data-tipo="rotina">Rotinas</button>
+    </div>
+    <ul class="lista" id="listaMemorias"></ul>
+    <h3 class="sub">Hábitos detectados</h3>
+    <ul class="lista" id="listaHabitos"></ul>
   </section>
 
   <!-- Painel: Relógio -->
