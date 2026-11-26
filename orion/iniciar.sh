@@ -6,7 +6,8 @@ source .venv/bin/activate
 pip install -q -r requirements.txt
 if [ ! -f .env ]; then
   cp .env.example .env
-  echo "Edite o arquivo .env e coloque sua ANTHROPIC_API_KEY, depois rode ./iniciar.sh de novo."
+  echo "Preencha o arquivo .env (ANTHROPIC_API_KEY e DATABASE_URL), salve e rode de novo: bash iniciar.sh"
+  if command -v open >/dev/null; then open -e .env; fi
   exit 0
 fi
 python server.py
